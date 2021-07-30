@@ -108,6 +108,12 @@ contract Dreidel is Ownable {
         return (spin_result, game.turn);
     }
 
+    function buyin() public payable {
+        if (member_buyin[member_buyin]) {
+            member_buyin[msg.sender] += msg.value;
+        }
+    }
+
     function boot_member(uint game_id) public {
         Game memory game = games[game_id];
         require(game.idle_time > block.timestamp - idle_limit);
