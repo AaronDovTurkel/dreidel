@@ -8,14 +8,9 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 contract Dreidel is Ownable {
 
-    using SafeMath for uint256;
+    /** types */
 
-    enum Spin_Results {
-        GIMEL,
-        HEI,
-        NUN,
-        SHIN
-    }
+    using SafeMath for uint256;
 
     enum Game_Status {
         LIVE,
@@ -33,9 +28,15 @@ contract Dreidel is Ownable {
         address payable[] members;
     }
 
-    mapping (address => uint) member_buyin;
+    /** events */
 
-    Game[] games;
+    event Spin(address from, uint spin_result, uint turn);
+
+    /** declarations */
+
+    mapping (address => uint) public member_buyin;
+
+    Game[] public games;
     uint private _spin_nonce;
     uint idle_limit = 10 minutes;
 
@@ -44,10 +45,6 @@ contract Dreidel is Ownable {
     }
 
     /** public functions */
-
-    function list_games() public view returns (Game[] memory) {
-        return games;
-    }
 
     function propose_game(uint anti, uint member_limit) public payable returns (uint) {
         Game memory game = Game(
@@ -83,7 +80,11 @@ contract Dreidel is Ownable {
         }
     }
 
-    function spin(uint game_id) public returns (Spin_Results, uint) {
+    function get_game_members(uint game_id) public view returns (address payable[] memory) {
+        return games[game_id].members;
+    }
+
+    function spin(uint game_id) public{
         Game storage game = games[game_id];
         require(_game_status(game, Game_Status.LIVE));
         require(_member_id(game) == game.turn);
@@ -91,31 +92,30 @@ contract Dreidel is Ownable {
 
         uint random_number = uint(keccak256(abi.encodePacked(block.timestamp, msg.sender, _spin_nonce))) % 4;
         _spin_nonce++;
-        Spin_Results spin_result = Spin_Results(random_number);
 
-        if (spin_result == Spin_Results.GIMEL) {
+        if (random_number == 1) {
             member_buyin[msg.sender] += game.pot;
             _take_anti(game);
-        } else if (spin_result == Spin_Results.HEI) {
+        } else if (random_number == 2) {
             member_buyin[msg.sender] += game.pot / 2;
-        } else if (spin_result == Spin_Results.SHIN) {
+            game.pot = game.pot / 2;
+        } else if (random_number == 3) {
             member_buyin[msg.sender] -= game.anti * 2;
             game.pot += game.anti * 2;
         }
 
         _increment_turn(game);
 
-        return (spin_result, game.turn);
+        console.log(msg.sender, random_number, game.turn);
+        emit Spin(msg.sender, random_number, game.turn);
     }
 
     function buyin() public payable {
-        if (member_buyin[member_buyin]) {
-            member_buyin[msg.sender] += msg.value;
-        }
+        member_buyin[msg.sender] += msg.value;
     }
 
     function boot_member(uint game_id) public {
-        Game memory game = games[game_id];
+        Game storage game = games[game_id];
         require(game.idle_time > block.timestamp - idle_limit);
         require(_already_a_member(game));
 
@@ -172,7 +172,7 @@ contract Dreidel is Ownable {
         return game.status == status;
     }
 
-    function _increment_turn(Game memory game) internal view {
+    function _increment_turn(Game storage game) internal {
         if (game.turn == game.members.length - 1) {
             game.turn = 0;
         } else {
