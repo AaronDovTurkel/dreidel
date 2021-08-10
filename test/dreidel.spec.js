@@ -134,5 +134,7 @@ describe("Dreidel", function () {
         ethers.utils.parseEther("1.00005").toString()
       )
     }
-  })
+  });
+
+  // TODO: Boot member and leave game functions
 });
