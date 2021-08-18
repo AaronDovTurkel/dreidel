@@ -101,10 +101,6 @@ describe("Dreidel", function () {
     await expect(dreidel.spin(0)).to.emit(dreidel, "Spin");
     expect((await dreidel.games(0)).turn).to.equal(1);
 
-    // console.log((await dreidel.games(0)).pot.toString());
-    // console.log((await dreidel.member_buyin(owner.getAddress())).toString());
-    // console.log(ethers.utils.parseEther(".0003").toString())
-
     if (((await dreidel.games(0)).pot.toString()) === (ethers.utils.parseEther(".0005").toString())) {
       expect((await dreidel.member_buyin(owner.getAddress())).toString()).to.equal(
         ethers.utils.parseEther(".9997").toString()
@@ -136,5 +132,32 @@ describe("Dreidel", function () {
     }
   });
 
-  // TODO: Boot member and leave game functions
+  // TODO: leave game functions
+
+  it("should boot a member", async function() {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Dreidel = await ethers.getContractFactory("Dreidel");
+    const dreidel = await Dreidel.deploy();
+    await dreidel.deployed();
+
+    await dreidel.propose_game(ethers.utils.parseEther("0.0001"), 3, {
+      value: ethers.utils.parseEther("1")
+    });
+    await dreidel
+      .connect(addr1)
+      .join_game(0, { value: ethers.utils.parseEther("1") });
+    await dreidel
+      .connect(addr2)
+      .join_game(0, { value: ethers.utils.parseEther("1") });
+
+      await ethers.provider.send("evm_increaseTime", [3600]);
+      await ethers.provider.send("evm_mine");
+    
+
+    await expect(dreidel.connect(addr1).boot_member(0)).to.emit(dreidel, "Member_Booted").withArgs(
+      await addr1.getAddress(),
+      await owner.getAddress(),
+      ethers.utils.parseEther("1.0002")
+    );
+  })
 });

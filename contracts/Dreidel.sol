@@ -30,7 +30,13 @@ contract Dreidel is Ownable {
 
     /** events */
 
+    event Game_Proposed(Game game, address proposed_by);
+    event Game_Joined(Game game, address joiner);
+    event Game_Left(Game game, address departed);
+    event Game_started(Game game, address started_by);
+    event Anti_Taken(uint pot);
     event Spin(address from, uint spin_result, uint turn);
+    event Member_Booted(address from, address booted, uint pot);
 
     /** declarations */
 
@@ -58,6 +64,7 @@ contract Dreidel is Ownable {
         );
 
         games.push(game);
+        emit Game_Proposed(game, msg.sender);
         uint id = games.length - 1;
         join_game(id);
 
@@ -75,6 +82,8 @@ contract Dreidel is Ownable {
         game.members.push(payable(msg.sender));
         member_buyin[msg.sender] = msg.value;
 
+        emit Game_Joined(game, msg.sender);
+
         if (_reached_member_limit(game)) {
             _start_game(game);
         }
@@ -87,7 +96,7 @@ contract Dreidel is Ownable {
     function spin(uint game_id) public{
         Game storage game = games[game_id];
         require(_game_status(game, Game_Status.LIVE));
-        require(_member_id(game) == game.turn);
+        require(uint(_member_id(game)) == game.turn);
         require(member_buyin[msg.sender] >= game.anti * 2);
 
         uint random_number = uint(keccak256(abi.encodePacked(block.timestamp, msg.sender, _spin_nonce))) % 4;
@@ -95,6 +104,7 @@ contract Dreidel is Ownable {
 
         if (random_number == 1) {
             member_buyin[msg.sender] += game.pot;
+            game.pot = 0 ether;
             _take_anti(game);
         } else if (random_number == 2) {
             member_buyin[msg.sender] += game.pot / 2;
@@ -106,7 +116,6 @@ contract Dreidel is Ownable {
 
         _increment_turn(game);
 
-        console.log(msg.sender, random_number, game.turn);
         emit Spin(msg.sender, random_number, game.turn);
     }
 
@@ -116,11 +125,17 @@ contract Dreidel is Ownable {
 
     function boot_member(uint game_id) public {
         Game storage game = games[game_id];
-        require(game.idle_time > block.timestamp - idle_limit);
-        require(_already_a_member(game));
+        require(block.timestamp - game.idle_time >  idle_limit, "Not enough time has elapsed");
+        require(_already_a_member(game), "Not a game member");
 
-        game.pot += member_buyin[game.members[_member_id(game)]];
-        delete member_buyin[game.members[_member_id(game)]];
+        
+        game.pot += member_buyin[game.members[game.turn]];
+        emit Member_Booted(
+            game.members[uint(_member_id(game))],
+            game.members[game.turn],
+            game.pot
+        );
+        delete member_buyin[game.members[game.turn]];
         delete game.members[game.turn];
         _increment_turn(game);
     }
@@ -135,8 +150,10 @@ contract Dreidel is Ownable {
                 delete game.members[i];
             }
         }
+        emit Game_Left(game, msg.sender);
         if (game.members.length == 0) {
             game.status = Game_Status.OVER;
+            payable(owner()).transfer(game.pot);
         }
     }
 
@@ -147,6 +164,7 @@ contract Dreidel is Ownable {
         require (_reached_member_limit(game));
         game.status = Game_Status.LIVE;
         game.idle_time = block.timestamp;
+        emit Game_started(game, msg.sender);
         _take_anti(game);
     }
 
@@ -157,11 +175,12 @@ contract Dreidel is Ownable {
     }
 
     function _already_a_member(Game memory game) internal view returns (bool) {
-        bool member = false;
         for (uint i=0; i < game.members.length; i++) {
-            member = game.members[i] == msg.sender;
+            if (game.members[i] == msg.sender) {
+                return true;
+            }
         }
-        return member;
+        return false;
     }
 
     function _reached_member_limit(Game memory game) internal pure returns (bool) {
@@ -187,16 +206,16 @@ contract Dreidel is Ownable {
                 member_buyin[game.members[i]] = member_buyin[game.members[i]] - game.anti;
             }
             game.pot = game.anti * game.members.length;
+            emit Anti_Taken(game.pot);
     }
 
-    function _member_id(Game memory game) internal view returns (uint) {
-        uint member_id;
-        for (uint i = 0; i < game.members.length - 1; i++) {
+    function _member_id(Game memory game) internal view returns (int) {
+        for (uint i = 0; i < game.members.length; i++) {
             if (game.members[i] == msg.sender) {
-                member_id = i;
+                return int(i);
             }
         }
-        return member_id;
+        return -1;
     }
 
 }
